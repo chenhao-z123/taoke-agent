@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model UserProfile {
+  id                             String   @id @default(cuid())
+  planningMode                   String
+  freeTimeTarget                 Json?
+  strategyTier                   String
+  riskTier                       String
+  maxRecordedAbsencesOverride    Int?
+  caughtRiskToleranceNote        String?
+  executionPressure              String
+  scoreBufferPreference          String
+  preferLargeBlocks              Boolean  @default(false)
+  preferSkipEarlyClasses         Boolean  @default(false)
+  preferSkipLateClasses          Boolean  @default(false)
+  preferredWeekdays              Json?
+  preferredTimeUseCases          Json?
+  substituteAttendanceEnabled    Boolean  @default(false)
+  substituteAttendanceDefaultCost Float?
+  signInThenLeaveWillingness     Boolean  @default(false)
+  retroactiveRemedyEnabled       Boolean  @default(false)
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime @updatedAt
+}
+
+model TimetableCourse {
+  id                 String   @id @default(cuid())
+  courseName         String
+  timeSlots          Json
+  location           String?
+  teacherName        String?
+  weekRange          Json?
+  courseTypeOrCredit String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model SemesterPhaseConfig {
+  id                 String   @id @default(cuid())
+  phaseTemplate      Json
+  phaseRuleOverrides Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model ShortTermModifier {
+  id                String   @id @default(cuid())
+  weatherModifier   String?
+  temporaryGoalShift String?
+  upcomingEvents    Json?
+  bodyState         String?
+  timeValueAdjustmentNote String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model CourseDetail {
+  id                               String   @id @default(cuid())
+  courseNameRef                    String
+  courseClass                      String
+  fieldConfidence                  String?
+  specialCourseKind                String?
+  courseTargetLevel                String
+  specialReasonNote                String?
+  personalFailRisk                 String
+  attendanceModes                  Json
+  fullRollCallFrequencyTier        String?
+  randomCheckFrequencyTier         String?
+  maxRecordedAbsences              Int?
+  failThresholdAbsences            Int?
+  scoreLossPerRecordedAbsence      Float?
+  hasMandatorySessions             Boolean?
+  absenceRuleNote                  String?
+  absenceRuleConfidence            String?
+  gradingComponents                Json?
+  gradingRawNote                   String?
+  attendanceRequirementRawInput    String?
+  attendanceRequirementStructuredSummary String?
+  signInThenLeaveFeasibility       String?
+  escapeFeasibilityTier            String?
+  escapeEnvironmentTags            Json?
+  escapeEnvironmentNote            String?
+  substituteAttendanceAllowedForCourse Boolean?
+  substituteAttendanceCostOverride Float?
+  substituteAttendanceNote         String?
+  keySessionTypes                  Json?
+  rareEventFeedback                Json?
+  courseNotes                      String?
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
+}
+
+model GeneratedPlan {
+  id                 String   @id @default(cuid())
+  planningWindow     Json
+  availableTimeViews Json?
+  strategySnapshot   Json
+  tuningControls     Json
+  judgeShortRationale String?
+  missingInfoPrompt  String?
+  selectedCandidateId String?
+  judgeSummary       String?
+  debateSummary      String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  items              GeneratedPlanItem[]
+}
+
+model GeneratedPlanItem {
+  id                     String   @id @default(cuid())
+  generatedPlanId        String
+  courseId               String
+  date                   DateTime
+  timeSlot               String
+  attendanceStatus       String
+  executionNote          String
+  eventFeedbackAllowed   Boolean? @default(false)
+  mustAttendReason       String?
+  estimatedCommuteTimeCost Float?
+  estimatedSubstituteCost Float?
+  leaveEarlyNote         String?
+  phaseContextNote       String?
+  shortTermOverrideNote  String?
+  riskLevel              String?
+  timeValueScore         Float?
+  moneyCostScore         Float?
+  decisionConfidence     String?
+  missingInfoSummary     String?
+  constraintHits         Json?
+  recordedAbsenceImpact  String?
+  rareEventReplanNote    String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  plan GeneratedPlan @relation(fields: [generatedPlanId], references: [id], onDelete: Cascade)
+}
