@@ -3,7 +3,103 @@ import { jsonrepair } from "jsonrepair";
 
 import type { LlmProvider, StructuredGenerationRequest } from "@/lib/llm/provider";
 import { withTraceObservation } from "@/lib/observability/langfuse";
-import { recordLangfuseModelCall } from "@/lib/observability/langfuse-shallow";
+
+// Direct Langfuse client (copied from test_1)
+import { Langfuse } from "langfuse";
+
+let langfuseClient: Langfuse | null = null;
+
+function getLangfuseClient() {
+  if (!langfuseClient) {
+    // Clear proxy variables temporarily like test_1
+    const originalHttpProxy = process.env.HTTP_PROXY;
+    const originalHttpsProxy = process.env.HTTPS_PROXY;
+    
+    delete process.env.HTTP_PROXY;
+    delete process.env.HTTPS_PROXY;
+    
+    try {
+      langfuseClient = new Langfuse({
+        publicKey: process.env.LANGFUSE_PUBLIC_KEY!,
+        secretKey: process.env.LANGFUSE_SECRET_KEY!,
+        baseUrl: process.env.LANGFUSE_BASE_URL || 'https://us.cloud.langfuse.com'
+      });
+    } finally {
+      // Restore proxy variables
+      if (originalHttpProxy !== undefined) process.env.HTTP_PROXY = originalHttpProxy;
+      if (originalHttpsProxy !== undefined) process.env.HTTPS_PROXY = originalHttpsProxy;
+    }
+  }
+  return langfuseClient;
+}
+
+async function recordLlmCallForTest1Copy(record: {
+  schemaName: string;
+  schemaDescription: string; 
+  systemPrompt: string;
+  userPrompt: string;
+  hasImageInput: boolean;
+  model: string;
+  baseUrl: string;
+  rawOutput: string;
+  parsedOutput?: unknown;
+  durationMs: number;
+  status: "success" | "error";
+  errorMessage?: string;
+}) {
+  const client = getLangfuseClient();
+  if (!client) return;
+
+  try {
+    const trace = client.trace({
+      id: `llm-call-${Date.now()}`,
+      name: record.schemaName,
+      input: {
+        system_prompt: record.systemPrompt,
+        user_prompt: record.userPrompt,
+        has_image_input: record.hasImageInput
+      },
+      output: record.rawOutput,
+      metadata: {
+        provider: "openai_compatible",
+        base_url: record.baseUrl,
+        schema_description: record.schemaDescription,
+        model: record.model,
+        duration_ms: record.durationMs,
+        status: record.status,
+        error_message: record.errorMessage,
+        parsed_output: record.parsedOutput
+      }
+    });
+
+    const generation = trace.generation({
+      name: "llm.generateObject",
+      model: record.model,
+      input: {
+        schema_name: record.schemaName,
+        schema_description: record.schemaDescription,
+        system_prompt: record.systemPrompt,
+        user_prompt: record.userPrompt,
+        has_image_input: record.hasImageInput
+      },
+      output: record.rawOutput
+    });
+
+    await client.shutdownAsync();
+  } catch (error) {
+    console.warn("[langfuse] Failed to record LLM call:", error);
+    // Create error trace like test_1
+    client.trace({
+      id: `llm-error-${Date.now()}`,
+      name: "LLM Call Error",
+      metadata: {
+        error: error instanceof Error ? error.message : String(error),
+        schema_name: record.schemaName
+      }
+    });
+    await client.shutdownAsync();
+  }
+}
 
 type OpenAiCompatibleLlmProviderOptions = {
   baseUrl?: string;
@@ -289,6 +385,22 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
     const targetUrl = `${this.baseUrl}/chat/completions`;
     const startedAt = Date.now();
 
+    // Save original proxy environment variables (like test_1)
+    const originalHttpProxy = process.env.HTTP_PROXY;
+    const originalHttpsProxy = process.env.HTTPS_PROXY;
+    const originalHttpProxyLower = process.env.http_proxy;
+    const originalHttpsProxyLower = process.env.https_proxy;
+    const originalNoProxy = process.env.NO_PROXY;
+    const originalNoProxyLower = process.env.no_proxy;
+    
+    // Temporarily clear proxy environment variables (like test_1)
+    delete process.env.HTTP_PROXY;
+    delete process.env.HTTPS_PROXY;
+    delete process.env.http_proxy;
+    delete process.env.https_proxy;
+    delete process.env.NO_PROXY;
+    delete process.env.no_proxy;
+
     try {
       const response = await fetch(targetUrl, {
         ...createOpenAiCompatibleFetchOptions(targetUrl),
@@ -343,15 +455,14 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 
       const parsed = parseJsonFromContent(content);
       
-      await recordLangfuseModelCall({
-        provider: "openai_compatible",
-        baseUrl: this.baseUrl,
-        model: this.model,
+      await recordLlmCallForTest1Copy({
         schemaName: request.schemaName,
         schemaDescription: request.schemaDescription,
         systemPrompt: request.systemPrompt,
         userPrompt: request.userPrompt,
         hasImageInput: Boolean(request.userImageDataUrl),
+        model: this.model,
+        baseUrl: this.baseUrl,
         rawOutput: content,
         parsedOutput: parsed,
         durationMs: Date.now() - startedAt,
@@ -370,15 +481,15 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       
-      await recordLangfuseModelCall({
-        provider: "openai_compatible",
-        baseUrl: this.baseUrl,
-        model: this.model,
+      await recordLlmCallForTest1Copy({
         schemaName: request.schemaName,
         schemaDescription: request.schemaDescription,
         systemPrompt: request.systemPrompt,
         userPrompt: request.userPrompt,
         hasImageInput: Boolean(request.userImageDataUrl),
+        model: this.model,
+        baseUrl: this.baseUrl,
+        rawOutput: "",
         durationMs: Date.now() - startedAt,
         status: "error",
         errorMessage
@@ -392,6 +503,14 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
       });
 
       throw error;
+    } finally {
+      // Restore original proxy environment variables (like test_1)
+      if (originalHttpProxy !== undefined) process.env.HTTP_PROXY = originalHttpProxy;
+      if (originalHttpsProxy !== undefined) process.env.HTTPS_PROXY = originalHttpsProxy;
+      if (originalHttpProxyLower !== undefined) process.env.http_proxy = originalHttpProxyLower;
+      if (originalHttpsProxyLower !== undefined) process.env.https_proxy = originalHttpsProxyLower;
+      if (originalNoProxy !== undefined) process.env.NO_PROXY = originalNoProxy;
+      if (originalNoProxyLower !== undefined) process.env.no_proxy = originalNoProxyLower;
     }
   }
 }

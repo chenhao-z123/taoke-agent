@@ -1,7 +1,5 @@
-// Real Langfuse tracing implementation using the official Langfuse client
-// This replaces the previous no-op implementation to enable actual tracing
-
-import { getLangfuseClient, recordLlmCall } from "./simple-langfuse";
+// Simple Langfuse implementation for server actions
+// The actual Langfuse tracing is handled in the LLM provider directly
 
 export type TraceKind = "span" | "generation";
 export type TraceUpdate = {
@@ -30,18 +28,9 @@ type TraceDelegate = {
   ) => Promise<T>;
 };
 
-// Simple observation implementation that records updates for later flushing
-class LangfuseTraceObservation implements TraceObservation {
-  private updates: TraceUpdate[] = [];
-  
-  update(update: TraceUpdate) {
-    this.updates.push(update);
-  }
-  
-  getUpdates(): TraceUpdate[] {
-    return this.updates;
-  }
-}
+const noopObservation: TraceObservation = {
+  update: () => {}
+};
 
 let testTraceDelegate: TraceDelegate | null = null;
 
@@ -72,40 +61,16 @@ export async function withTraceObservation<T>(
     );
   }
 
-  // Real implementation - create observation and record updates
-  const observation = new LangfuseTraceObservation();
-  
-  if (options.initialUpdate) {
-    observation.update(options.initialUpdate);
-  }
-  
-  try {
-    const result = await callback(observation);
-    
-    // For now, we'll use the existing recordLlmCall for LLM-specific tracing
-    // The observation updates can be used for more detailed tracing later
-    
-    return result;
-  } catch (error) {
-    // Record error information if needed
-    throw error;
-  }
+  // No-op implementation - just call the callback without tracing
+  return callback(noopObservation);
 }
 
+// Simple flush implementation - no-op since actual flushing is handled in LLM provider
 export async function flushLangfuseTracing() {
-  // Use the flush function from simple-langfuse
-  const client = getLangfuseClient();
-  try {
-    await client?.flush();
-  } catch (error) {
-    console.warn("[langfuse] Failed to flush tracing:", error);
-  }
+  // Actual Langfuse tracing and flushing happens in the LLM provider directly
+  // This is just a compatibility stub for server actions
 }
 
 export async function initializeLangfuseTracing() {
-  // Initialize returns true if Langfuse is properly configured
-  return !!getLangfuseClient();
+  return true;
 }
-
-// Re-export recordLlmCall for convenience
-export { recordLlmCall };

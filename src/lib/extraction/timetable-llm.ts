@@ -183,6 +183,14 @@ export async function extractTimetableFromLlm(input: {
             });
 
             const parsed = screenshotStage1Schema.parse(rawResult);
+            
+            // Log raw_text for debugging
+            console.debug("[timetable-llm] Stage 1 extracted raw_text length:", parsed.raw_text.length);
+            
+            if (!parsed.raw_text || parsed.raw_text.trim().length === 0) {
+              console.warn("[timetable-llm] Stage 1 extracted empty raw_text - this may cause Stage 2 to fail");
+            }
+            
             stageTrace.update({
               output: {
                 raw_text_length: parsed.raw_text.length,
@@ -193,7 +201,7 @@ export async function extractTimetableFromLlm(input: {
           }
         );
 
-        const parsedStage2 = await withTraceObservation(
+        const stage2Result = await withTraceObservation(
           "timetable.screenshot_stage2",
           {
             initialUpdate: {
@@ -204,15 +212,20 @@ export async function extractTimetableFromLlm(input: {
             }
           },
           async (stageTrace) => {
-            const stage2Result = await provider.generateObject({
+            const stage2UserPrompt = `Extract structured timetable data from the following raw text transcribed from a screenshot:\n\n${stage1Result.raw_text}${relatedContextSection}`;
+            
+            // Log Stage 2 prompt for debugging
+            console.debug("[timetable-llm] Stage 2 user prompt length:", stage2UserPrompt.length);
+            
+            const rawResult = await provider.generateObject({
               schemaName: "TimetableExtractionResult",
               schemaDescription: "Return only strict JSON for timetable extraction.",
               responseSchema: timetableExtractionResultSchema,
               systemPrompt: TIMETABLE_SYSTEM_PROMPT,
-              userPrompt: `Extract structured timetable data from the following raw text transcribed from a screenshot:\n\n${stage1Result.raw_text}${relatedContextSection}`
+              userPrompt: stage2UserPrompt
             });
 
-            const parsed = parseTimetableResult(stage2Result);
+            const parsed = parseTimetableResult(rawResult);
             stageTrace.update({
               output: {
                 course_count: parsed.courses.length,
@@ -225,8 +238,8 @@ export async function extractTimetableFromLlm(input: {
         );
 
         const result = {
-          ...parsedStage2,
-          warnings: [...stage1Result.warnings, ...parsedStage2.warnings]
+          ...stage2Result,
+          warnings: [...stage1Result.warnings, ...stage2Result.warnings]
         };
 
         trace.update({
